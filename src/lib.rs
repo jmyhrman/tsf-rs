@@ -1,8 +1,8 @@
 extern crate tsf_sys;
 
-use tsf_sys::*;
-use std::ffi::{CString, c_void};
+use std::ffi::{c_void, CString};
 use std::os::raw::c_int;
+use tsf_sys::*;
 
 /// Object holding a pointer to a tsf instance.
 ///
@@ -34,7 +34,7 @@ pub struct Tsf {
     tsf_ptr: *mut tsf_sys::tsf,
     /// We cache the output mode that we last configured TSF with. This is None iff `set_output` has
     /// not been called.
-    output_mode: Option<OutputMode>
+    output_mode: Option<OutputMode>,
 }
 
 impl Drop for Tsf {
@@ -47,14 +47,15 @@ impl Tsf {
     fn new(tsf_ptr: *mut tsf) -> Self {
         Tsf {
             tsf_ptr,
-            output_mode : None
+            output_mode: None,
         }
     }
 
     /// Load from a filename of a soundfont (.sf2) file.
     // TODO: Should really take a path or something like that
     pub fn load_filename<T: Into<Vec<u8>>>(filename: T) -> Tsf {
-        let filename_cstring = CString::new(filename).expect("filename wasn't a valid C string - did it have an internal 0 byte?");
+        let filename_cstring = CString::new(filename)
+            .expect("filename wasn't a valid C string - did it have an internal 0 byte?");
         let tsf_ptr: *mut tsf = unsafe { tsf_load_filename(filename_cstring.as_ptr()) };
         Tsf::new(tsf_ptr)
     }
@@ -62,9 +63,8 @@ impl Tsf {
     /// Load from memory.
     pub fn load_memory<T: Into<Vec<u8>>>(buffer: T) -> Tsf {
         let vec = buffer.into();
-        let tsf_ptr: *mut tsf = unsafe { tsf_load_memory(
-            vec.as_ptr() as *const c_void,
-            vec.len() as c_int) };
+        let tsf_ptr: *mut tsf =
+            unsafe { tsf_load_memory(vec.as_ptr() as *const c_void, vec.len() as c_int) };
         Tsf::new(tsf_ptr)
     }
 
@@ -84,7 +84,14 @@ impl Tsf {
             OutputMode::StereoUnweaved => TSFOutputMode_TSF_STEREO_UNWEAVED,
             OutputMode::Mono => TSFOutputMode_TSF_MONO,
         };
-        unsafe { tsf_set_output(self.tsf_ptr, converted_mode, sample_rate as c_int, global_gain_db) };
+        unsafe {
+            tsf_set_output(
+                self.tsf_ptr,
+                converted_mode,
+                sample_rate as c_int,
+                global_gain_db,
+            )
+        };
 
         // Remember the output mode that was set.
         self.output_mode = Some(mode);
@@ -97,7 +104,11 @@ impl Tsf {
     /// Returns a buffer of size: samples * number of output channels (the number of output channels
     /// was specified by `Tsf::set_output`).
     pub fn render_float(&mut self, samples: usize) -> Vec<f32> {
-        let output_channels = match self.output_mode.as_ref().expect("set_output not yet called") {
+        let output_channels = match self
+            .output_mode
+            .as_ref()
+            .expect("set_output not yet called")
+        {
             OutputMode::StereoInterleaved => 2,
             OutputMode::StereoUnweaved => 2,
             OutputMode::Mono => 1,
@@ -107,14 +118,17 @@ impl Tsf {
         let dst_ptr: *mut f32 = dst.as_mut_ptr();
         unsafe {
             tsf_render_float(self.tsf_ptr, dst_ptr, samples as c_int, 0);
-            dst.set_len(samples*output_channels);
+            dst.set_len(samples * output_channels);
         }
         dst
     }
 
     pub fn channel_note_on(&mut self, channel: u16, key: u8, vel: f32) {
         assert!(key <= 127u8, "key must be between 0 and 127");
-        assert!(vel >= 0f32 && vel <= 1f32, "vel must be between 0.0 and 1.0");
+        assert!(
+            vel >= 0f32 && vel <= 1f32,
+            "vel must be between 0.0 and 1.0"
+        );
         unsafe { tsf_channel_note_on(self.tsf_ptr, channel as c_int, key as c_int, vel) };
     }
 
@@ -132,7 +146,14 @@ impl Tsf {
     }
 
     pub fn channel_set_preset_number(&mut self, channel: u16, preset_number: u16, mididrums: bool) {
-        unsafe { tsf_channel_set_presetnumber(self.tsf_ptr, channel as c_int, preset_number as c_int, if mididrums { 1 } else { 0 }) };
+        unsafe {
+            tsf_channel_set_presetnumber(
+                self.tsf_ptr,
+                channel as c_int,
+                preset_number as c_int,
+                if mididrums { 1 } else { 0 },
+            )
+        };
     }
 
     pub fn get_preset_count(&mut self) -> u16 {
@@ -143,7 +164,7 @@ impl Tsf {
 pub enum OutputMode {
     StereoInterleaved,
     StereoUnweaved,
-    Mono
+    Mono,
 }
 
 #[cfg(test)]
@@ -157,25 +178,34 @@ mod tests {
         assert_eq!(1, tsf.get_preset_count());
 
         let sample_rate = 48000;
-        let samples = (sample_rate / 10) as usize;  // render 0.1s at a time
+        let samples = (sample_rate / 10) as usize; // render 0.1s at a time
 
         tsf.set_output(OutputMode::Mono, sample_rate, 0f32);
 
         // Render some silence
         let silence_samples = tsf.render_float(samples);
-        assert!(silence_samples.into_iter().all(|x| x==0f32), "Didn't get silence");
+        assert!(
+            silence_samples.into_iter().all(|x| x == 0f32),
+            "Didn't get silence"
+        );
 
         // Start a note and render it. We need to initialize the channel with a preset
         tsf.channel_set_preset_number(0, 0, false);
         tsf.channel_note_on(0, 48, 1f32);
 
         let note_on_samples = tsf.render_float(4800);
-        assert!(note_on_samples.into_iter().any(|x| x!=0f32), "Got silence");
+        assert!(
+            note_on_samples.into_iter().any(|x| x != 0f32),
+            "Got silence"
+        );
 
         // End a note - expect it to ring for a little while.
         tsf.channel_note_off(0, 48);
         let note_off_samples = tsf.render_float(4800);
-        assert!(note_off_samples.into_iter().any(|x| x!=0f32), "Got silence");
+        assert!(
+            note_off_samples.into_iter().any(|x| x != 0f32),
+            "Got silence"
+        );
 
         // Skip ahead a long time. There's no way the note rings for 10s right? Well 10s at 48000
         // samples per second is 480k samples. Let's render that many and discard them.
@@ -185,7 +215,10 @@ mod tests {
 
         // Now check we are back to silence
         let silence_after_samples = tsf.render_float(samples);
-        assert!(silence_after_samples.into_iter().all(|x| x==0f32), "Didn't get silence");
+        assert!(
+            silence_after_samples.into_iter().all(|x| x == 0f32),
+            "Didn't get silence"
+        );
 
         // Note that we do not need to call `close` - letting tsf fall out of scope / fall off the
         // stack is sufficient.

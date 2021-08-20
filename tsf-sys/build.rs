@@ -21,7 +21,7 @@ fn main() {
 
     // Link the compiled library
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
-    println!("cargo:rustc-link-lib=static=tsf", );
+    println!("cargo:rustc-link-lib=static=tsf",);
 
     // Generate the bindings
     bindgen::Builder::default()
