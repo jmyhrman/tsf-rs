@@ -37,6 +37,9 @@ pub struct Tsf {
     output_mode: Option<OutputMode>,
 }
 
+unsafe impl Send for Tsf {}
+unsafe impl Sync for Tsf {}
+
 impl Drop for Tsf {
     fn drop(&mut self) {
         unsafe { tsf_close(self.tsf_ptr) };
