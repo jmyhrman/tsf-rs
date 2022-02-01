@@ -138,7 +138,7 @@ impl Tsf {
     pub fn channel_note_on(&mut self, channel: u16, key: u8, vel: f32) {
         assert!(key <= 127u8, "key must be between 0 and 127");
         assert!(
-            vel >= 0f32 && vel <= 1f32,
+            (0f32..=1f32).contains(&vel),
             "vel must be between 0.0 and 1.0"
         );
         unsafe { tsf_channel_note_on(self.tsf_ptr, channel as c_int, key as c_int, vel) };
